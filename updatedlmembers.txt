@@ -1,0 +1,131 @@
+# Import CSV file containing contacts
+$contacts = Import-Csv -Path "C:\admin\distributionlistscripts\newcontacts.csv"
+
+# Initialize empty arrays to store mail contacts and mailboxes
+$mailContacts = @()
+$mailboxes = @()
+$distributionlists = @()
+
+# Loop through each contact
+foreach ($contact in $contacts) {
+    $contactName = $contact.address
+
+    # Retrieve mail contact, removes smtp prefix and adds to array 
+    
+    $mailContact = Get-MailContact -Identity $contactName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty ExternalEmailAddress
+    if ($mailContact) {
+        $mailContacts += $mailContact -replace '^smtp:'
+    }
+
+    # Retrieve mailbox and adds to array
+    $mailbox = Get-Mailbox -Identity $contactName -ErrorAction SilentlyContinue | select-object -ExpandProperty PrimarySmtpAddress
+    if ($mailbox) {
+        $mailboxes += $mailbox
+    }
+
+    #retrieve distribution groups and adds to array
+    $distributionlist = Get-DistributionGroup -Identity $contactName -ErrorAction SilentlyContinue | Select-Object -ExpandProperty Primarysmtpaddress
+    if ($distributionlist) {
+        $distributionlists += $distributionlist
+    }
+}
+
+#$mailcontacts
+#$mailboxes
+
+#Combine mail contacts and mailboxes into a single variable
+$combinedList = $mailContacts + $mailboxes + $distributionlists
+
+# Display the combined list
+#$combinedList
+
+# Find contacts in $contacts not present in $combinedList
+$missingContacts = $contacts | Where-Object { $_.address -notin $combinedList }
+
+# Display missing contacts
+#$missingContacts
+
+# Loop through missing contacts
+foreach ($missingContact in $missingContacts) {
+    $firstName = $missingContact.FirstName
+    $lastName = $missingContact.LastName
+    $emailAddress = $missingContact.Address
+    $phoneNumber = $missingContact.Phone
+    $mobileNumber =$missingContact.MobilePhone
+    $department = $missingContact.Department
+    $Alias = $missingContact.alias
+
+    $uniqueName = $lastName + " " + $firstName
+    $i = 1
+
+    # Since display name has to be unique Generate three name options
+    $nameOptions = @(
+         "$uniqueName" ,
+         "$firstName $lastName", 
+         "$($firstName.Substring(0, 1)) $lastName", 
+         "$($firstName.Substring(0, 2)) $lastName" 
+    )
+
+    
+
+    # Find a unique name among the options
+    foreach ($option in $nameOptions) {
+        
+
+        # Check if the new contact name is not present in the address book using Get-Contact
+        
+        if (-not [bool]  (Get-Contact -identity $option  -ErrorAction SilentlyContinue)) {
+
+        $finalContactName = $option
+            break
+        } 
+    }
+
+    if ($finalContactName) {
+        # Create new mail contact
+       
+        New-MailContact -Name $finalContactName -ExternalEmailAddress $emailAddress -Alias $Alias
+
+        # Wait for the contact to be added
+        do {
+        write-host "creating contact for $emailaddress, please wait....."
+            Start-Sleep -Seconds 5
+            $newContact = Get-MailContact -Identity $finalContactName -ErrorAction SilentlyContinue
+        } while (-not $newContact)
+
+        # Add phone number using Set-MailContact
+        Set-Contact -Identity $finalContactName -Phone $phoneNumber -MobilePhone $mobileNumber -Department $department 
+
+        Write-Host "Contact '$newContactName' added and updated."
+    } else {
+        Write-Host "No available unique name found for contact: $firstName $lastName"
+    }
+}
+
+
+
+#find distribution lists that want to be updated and delete all members
+
+$DLstoupdate = $contacts.notes | Get-Unique
+
+foreach ($DLtoupdate in $DLstoupdate) {
+
+write-host "WARNING!! If you continue all members of $dltoupdate distribution list will be deleted" -ForegroundColor Red
+
+      $choice = Read-Host  "Press 'Y' to continue and delete, 'N' to skip)"
+
+    if ($choice -eq 'Y' -or $choice -eq 'y') {
+
+        Get-DistributionGroupMember -Identity $DLtoupdate | Remove-DistributionGroupMember -Identity $DLtoupdate -Confirm:$false
+
+    }
+}
+
+
+#add members to dl
+
+foreach($contact in $contacts){
+
+add-DistributionGroupMember -Identity $contact.Notes -Member $contact.address -Confirm:$false
+
+}

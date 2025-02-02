@@ -1,0 +1,19 @@
+
+#defines list of distribution lists (DL)
+$DLs = get-content C:\admin\distributionlistscripts\DLs.txt
+
+#loops through list and printing display name and email to file, one file per DL, each file will be called by DL name
+Foreach ($DL in $DLs){
+
+#deletes file if exists
+
+$filepath = "C:\admin\distributionlistscripts\distributionlistreports\$dl.csv"
+if (Test-Path -Path $filePath){
+Remove-Item $filePath ;
+
+}
+
+
+Get-DistributionGroupMember -Identity $DL | select-object Name, primarysmtpaddress, externalemailaddress | export-csv C:\admin\distributionlistscripts\distributionlistreports\$dl.csv -Append
+
+}
