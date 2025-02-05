@@ -1,6 +1,8 @@
 ﻿#before running this script need to connect to exchange - connect-exchangeonline and also to connect to microsoft graph - "Connect-MgGraph -Scopes User.ReadWrite.All, Organization.Read.All"
 
 
+#-------------------variables and functions-----------------------------------#
+
 #function to timestamp logs
 function Get-TimeStamp {
     
@@ -27,21 +29,27 @@ $usersinAD = @(
     Get-ADUser -Filter * -SearchBase $ou5
 )
 
-
+#gets all contacts from AD
+$adcontacts = get-adobject -filter 'objectclass -eq "contact"' -Properties * | select-object mail, DisplayName, DistinguishedName, targetAddress
 
 $users = Import-Csv "C:\Users\ajeremy\Documents\bulkmailusers-test.csv"
 
+#---------------end of variables-------------------------------------------------------------------------------------------------------------------
 
 foreach($user in $users){
+
+
+#=================STAGE 1 ===== REMOVE JCT.AC.IL contact===========================================================================================
 
 $checkcontactexists = get-contact $user.MicrosoftOnlineServicesID -erroraction silentlycontinue
 
 if($checkcontactexists){
 Write-output "$(Get-TimeStamp) contact $($user.MicrosoftOnlineServicesID) exists, deleting...." | Out-file C:\admin\log\newmailuser2.txt -append
-remove-mailcontact $user.MicrosoftOnlineServicesID -erroraction silentlycontinue
+remove-mailcontact $user.MicrosoftOnlineServicesID -confirm:$false -erroraction silentlycontinue 
 }
 else{}
 
+#================STAGE 2====== HYRBID USER UPDATING===================================================================================================
 
 $userin365 = $usersinAD | Where-Object { $_.SamAccountName -eq $user.username } -ErrorAction SilentlyContinue
 
@@ -117,6 +125,8 @@ else{
 
 }
 
+#========STAGE 3============= Cloud based user updating===============================================================================================================
+
 else{
 
 $checkmailuser = get-mailuser -identity $user.externalemailaddress1 -ErrorAction SilentlyContinue
@@ -139,7 +149,7 @@ else{
             #log 365 user exists
             Write-output "$(Get-TimeStamp) 365 user $($user.MicrosoftOnlineServicesID) exists" | Out-file C:\admin\log\newmailuser2.txt -append
 
-
+            update-mguser -userid $user.MicrosoftOnlineServicesID -usagelocation "IL"
             #if exists applies license to user - which creates the mailbox
                 Set-MgUserLicense -userid $user.MicrosoftOnlineServicesID -AddLicenses @{SkuId = "78e66a63-337a-4a9a-8959-41c6654dfb56"} -RemoveLicenses @() -erroraction SilentlyContinue
             
@@ -149,6 +159,21 @@ else{
             #waits 50 seconds to finish creating mailbox
                     start-sleep -Seconds 70
             
+                        #log mailbox created successfully 
+                                        $createdmailbox = get-mailbox $user.MicrosoftOnlineServicesID -ErrorAction SilentlyContinue
+                if($createdmailbox){
+                Write-output "$(Get-TimeStamp) mailbox for $($user.MicrosoftOnlineServicesID) created successfully" | Out-file C:\admin\log\newmailuser2.txt -append
+                }
+                else{
+                Write-output "$(Get-TimeStamp) mailbox creation for $($user.MicrosoftOnlineServicesID) failed" | Out-file C:\admin\log\newmailuser2.txt -append
+                
+            #if exists applies license to user - which creates the mailbox
+                Set-MgUserLicense -userid $user.MicrosoftOnlineServicesID -AddLicenses @{SkuId = "78e66a63-337a-4a9a-8959-41c6654dfb56"} -RemoveLicenses @() -erroraction SilentlyContinue
+                
+            #waits 50 seconds to finish creating mailbox
+                    start-sleep -Seconds 70
+                }
+
             #log creating forwarding rule
             Write-output "$(Get-TimeStamp) creating forwarding rule to $($user.externalemailaddress1) from mailbox $($user.MicrosoftOnlineServicesID)" | Out-file C:\admin\log\newmailuser2.txt -append
 
@@ -178,15 +203,8 @@ else{
 
                 }until($forwardingrule -eq "smtp:$($user.externalemailaddress1)")
 
-                $createdmailbox = get-mailbox $user.MicrosoftOnlineServicesID -ErrorAction SilentlyContinue
-            
-            #log mailbox created successfully and forwarding rule
-                if($createdmailbox){
-                Write-output "$(Get-TimeStamp) mailbox for $($user.MicrosoftOnlineServicesID) created successfully" | Out-file C:\admin\log\newmailuser2.txt -append
-                }
-                else{
-                Write-output "$(Get-TimeStamp) mailbox creation for $($user.MicrosoftOnlineServicesID) failed" | Out-file C:\admin\log\newmailuser2.txt -append
-                }
+
+                #log forwarding rule created successfully
                 if($createdmailbox.ForwardingSmtpAddress -eq "smtp:$($user.externalemailaddress1)"){
                 Write-output "$(Get-TimeStamp) forwarding rule to $($user.externalemailaddress1) for $($user.MicrosoftOnlineServicesID) created successfully" | Out-file C:\admin\log\newmailuser2.txt -append
                 }
@@ -197,8 +215,10 @@ else{
 
                 }
 
+#==========STAGE 5========= Mail user Creation ===== Not AD synced USER ======= Not Cloud Based USER ===================================================================================================
+
      else{
-#process to create maiuser - if not user in 365 then create mailuser
+#process to create mailuser - if not user in 365 then create mailuser
         
         #log starting mailuser creation
           Write-output "$(Get-TimeStamp) 365 user $($user.MicrosoftOnlineServicesID) doesnt exist proceeding with process to create mail user" | Out-file C:\admin\log\newmailuser2.txt -append  
@@ -235,7 +255,39 @@ else{
                         #log deleting member of distribution list
                 Write-output "$(Get-TimeStamp) deleting $($user.externalemailaddress1) from contacts" | Out-file C:\admin\log\newmailuser2.txt -append
            
-                remove-mailcontact -identity $($user.externalemailaddress1) -confirm:$false
+           #checks if adcontact exists with same external email address
+                            $adcontactexists = $adcontacts | Where-Object {$_.mail -eq $user.externalemailaddress1}
+
+                            if($adcontactexists){
+                            #deletes external email address
+                            Write-output "$(Get-TimeStamp) deleting $($user.externalemailaddress1) from AD contacts" | Out-file C:\admin\log\newmailuser2.txt -append
+                            remove-adobject $adcontactexists.DistinguishedName -confirm:$false 
+
+
+                            #syncs deletion with 365
+                            do {
+
+                                # Try to start AD Sync
+                              try{  $sync = Start-ADSyncSyncCycle -PolicyType Delta -ErrorAction SilentlyContinue }
+                              catch{}
+                                # Check the result
+                                if ($sync.Result -eq "Success") {
+                                    Write-output "$(Get-TimeStamp) AD Sync completed successfully!" | Out-file C:\admin\log\newmailuser2.txt -append
+                                    break  # Exit the loop
+                                } else {
+                                    Write-output "$(Get-TimeStamp) Sync not successful, retrying in 10 seconds..." | Out-file C:\admin\log\newmailuser2.txt -append
+                                    Start-Sleep -Seconds 10
+                                }
+
+                            } until ($sync.Result -eq "Success")
+
+                            start-sleep -seconds 210
+
+                            }
+                            else{
+                            #if contact doesnt exit in AD deletes it from 365
+             Write-output "$(Get-TimeStamp) deleting $($user.externalemailaddress1) from 365 contacts" | Out-file C:\admin\log\newmailuser2.txt -append
+                remove-mailcontact -identity $($user.externalemailaddress1) -confirm:$false}
 
                 #breaks loop once finds 1 column equal to 1
                 break
