@@ -15,7 +15,7 @@ $ou2 = ""
 $ou3 = ""
 $ou4 = ""
 $ou5 = ""
-$ou6 = ""
+
 
 
 #get users from groups fixed above
@@ -25,7 +25,6 @@ $usersinAD = @(
     Get-ADUser -Filter * -SearchBase $ou3
     Get-ADUser -Filter * -SearchBase $ou4
     Get-ADUser -Filter * -SearchBase $ou5
-    Get-ADUser -Filter * -SearchBase $ou6
 )
 
 
@@ -38,7 +37,7 @@ foreach($user in $users){
 $checkcontactexists = get-contact $user.MicrosoftOnlineServicesID -erroraction silentlycontinue
 
 if($checkcontactexists){
-Write-output "$(Get-TimeStamp) contact $($user.MicrosoftOnlineServicesID) exists, deleting...." | Out-file C:\admin\log\newmailuser1.txt -append
+Write-output "$(Get-TimeStamp) contact $($user.MicrosoftOnlineServicesID) exists, deleting...." | Out-file C:\admin\log\newmailuser2.txt -append
 remove-mailcontact $user.MicrosoftOnlineServicesID -erroraction silentlycontinue
 }
 else{}
@@ -47,7 +46,7 @@ else{}
 $userin365 = $usersinAD | Where-Object { $_.SamAccountName -eq $user.username } -ErrorAction SilentlyContinue
 
 if($userin365){
-
+Write-output "$(Get-TimeStamp) user $($user.username) exists in 365 and is syncing from AD, starting process to set-aduser" | Out-file C:\admin\log\newmailuser2.txt -append
 #set domains
 $domain = "@jct.ac.il"
 $domain_offsite = "@jctacil.onmicrosoft.com"
@@ -62,13 +61,15 @@ $Proxyaddresses="$proxyaddress1,$proxyaddress2"
 #set mail variable for attribute
 $mail = "$User$domain"
 
-
+Write-output "$(Get-TimeStamp) user $($user.username)  starting process to set-aduser" | Out-file C:\admin\log\newmailuser2.txt -append
 #sets attributes in AD for exchange 365 email
 Set-ADUser -Identity $user -Add @{proxyaddresses=$Proxyaddresses;mailnickname=$user} -Replace @{mail=$mail;UserPrincipalName=$mail}
 #adds to group for exchange email
 add-adgroupmember -identity "exchange users" -members $user
 
+start-sleep -seconds 2
 
+Write-output "$(Get-TimeStamp) user $($user.username)  syncing changes with 365" | Out-file C:\admin\log\newmailuser2.txt -append
 do {
 
     # Try to start AD Sync
@@ -76,10 +77,10 @@ do {
   catch{}
     # Check the result
     if ($sync.Result -eq "Success") {
-        Write-output "AD Sync completed successfully!" | Out-file C:\admin\log\newmailuser1.txt -append
+        Write-output "$(Get-TimeStamp) AD Sync completed successfully!" | Out-file C:\admin\log\newmailuser2.txt -append
         break  # Exit the loop
     } else {
-        Write-output "Sync not successful, retrying in 10 seconds..." | Out-file C:\admin\log\newmailuser1.txt -append
+        Write-output "$(Get-TimeStamp) Sync not successful, retrying in 10 seconds..." | Out-file C:\admin\log\newmailuser2.txt -append
         Start-Sleep -Seconds 10
     }
 
@@ -101,12 +102,12 @@ $forwardingrule = (get-mailbox $user.MicrosoftOnlineServicesID -ErrorAction Sile
 
 #checks if forwarding rule is created
 if($forwardingrule -eq "smtp:$($user.externalemailaddress1)"){
-    write-output "forwarding rule for mailbox $user.MicrosoftOnlineServicesID to $user.externalemailaddress1 was created successfully" | Out-file C:\admin\log\newmailuser1.txt -append
+    write-output "$(Get-TimeStamp) forwarding rule for mailbox $($user.MicrosoftOnlineServicesID) to $($user.externalemailaddress1) was created successfully" | Out-file C:\admin\log\newmailuser2.txt -append
     break #if created exists loop
 }
 else{
 
-        Write-output "mailbox for $user.MicrosoftOnlineServicesID is still being created" | Out-file C:\admin\log\newmailuser1.txt -append
+        Write-output "$(Get-TimeStamp) mailbox for $($user.MicrosoftOnlineServicesID) is still being created" | Out-file C:\admin\log\newmailuser2.txt -append
         Start-Sleep -Seconds 10
 }
 
@@ -136,20 +137,20 @@ else{
 
 
             #log 365 user exists
-            Write-output "$(Get-TimeStamp) 365 user $($user.MicrosoftOnlineServicesID) exists" | Out-file C:\admin\log\newmailuser1.txt -append
+            Write-output "$(Get-TimeStamp) 365 user $($user.MicrosoftOnlineServicesID) exists" | Out-file C:\admin\log\newmailuser2.txt -append
 
 
             #if exists applies license to user - which creates the mailbox
                 Set-MgUserLicense -userid $user.MicrosoftOnlineServicesID -AddLicenses @{SkuId = "78e66a63-337a-4a9a-8959-41c6654dfb56"} -RemoveLicenses @() -erroraction SilentlyContinue
             
             #log creating mailbox
-            Write-output "$(Get-TimeStamp) creating mailbox for $($user.MicrosoftOnlineServicesID)" | Out-file C:\admin\log\newmailuser1.txt -append
+            Write-output "$(Get-TimeStamp) creating mailbox for $($user.MicrosoftOnlineServicesID)" | Out-file C:\admin\log\newmailuser2.txt -append
 
             #waits 50 seconds to finish creating mailbox
                     start-sleep -Seconds 70
             
             #log creating forwarding rule
-            Write-output "$(Get-TimeStamp) creating forwarding rule to $($user.externalemailaddress1) from mailbox $($user.MicrosoftOnlineServicesID)" | Out-file C:\admin\log\newmailuser1.txt -append
+            Write-output "$(Get-TimeStamp) creating forwarding rule to $($user.externalemailaddress1) from mailbox $($user.MicrosoftOnlineServicesID)" | Out-file C:\admin\log\newmailuser2.txt -append
 
             #creates forwarding rule to external email verifying that emails are not saved in mailbox
                 do {
@@ -165,12 +166,12 @@ else{
 
                         #checks if forwarding rule is created
                         if($forwardingrule -eq "smtp:$($user.externalemailaddress1)"){
-                            write-output "forwarding rule for mailbox $user.MicrosoftOnlineServicesID to $user.externalemailaddress1 was created successfully" | Out-file C:\admin\log\newmailuser1.txt -append
+                            write-output "forwarding rule for mailbox $($user.MicrosoftOnlineServicesID) to $($user.externalemailaddress1) was created successfully" | Out-file C:\admin\log\newmailuser2.txt -append
                             break #if created exists loop
                         }
                         else{
 
-                        Write-output "mailbox for $user.MicrosoftOnlineServicesID is still being created" | Out-file C:\admin\log\newmailuser1.txt -append
+                        Write-output "mailbox for $($user.MicrosoftOnlineServicesID) is still being created" | Out-file C:\admin\log\newmailuser2.txt -append
                         Start-Sleep -Seconds 10
                              }
 
@@ -181,16 +182,16 @@ else{
             
             #log mailbox created successfully and forwarding rule
                 if($createdmailbox){
-                Write-output "$(Get-TimeStamp) mailbox for $($user.MicrosoftOnlineServicesID) created successfully" | Out-file C:\admin\log\newmailuser1.txt -append
+                Write-output "$(Get-TimeStamp) mailbox for $($user.MicrosoftOnlineServicesID) created successfully" | Out-file C:\admin\log\newmailuser2.txt -append
                 }
                 else{
-                Write-output "$(Get-TimeStamp) mailbox creation for $($user.MicrosoftOnlineServicesID) failed" | Out-file C:\admin\log\newmailuser1.txt -append
+                Write-output "$(Get-TimeStamp) mailbox creation for $($user.MicrosoftOnlineServicesID) failed" | Out-file C:\admin\log\newmailuser2.txt -append
                 }
                 if($createdmailbox.ForwardingSmtpAddress -eq "smtp:$($user.externalemailaddress1)"){
-                Write-output "$(Get-TimeStamp) forwarding rule to $($user.externalemailaddress1) for $($user.MicrosoftOnlineServicesID) created successfully" | Out-file C:\admin\log\newmailuser1.txt -append
+                Write-output "$(Get-TimeStamp) forwarding rule to $($user.externalemailaddress1) for $($user.MicrosoftOnlineServicesID) created successfully" | Out-file C:\admin\log\newmailuser2.txt -append
                 }
                 else{
-                 Write-output "$(Get-TimeStamp) forwarding rule to $($user.externalemailaddress1) for $($user.MicrosoftOnlineServicesID) failed"  | Out-file C:\admin\log\newmailuser1.txt -append
+                 Write-output "$(Get-TimeStamp) forwarding rule to $($user.externalemailaddress1) for $($user.MicrosoftOnlineServicesID) failed"  | Out-file C:\admin\log\newmailuser2.txt -append
                 }
 
 
@@ -200,7 +201,7 @@ else{
 #process to create maiuser - if not user in 365 then create mailuser
         
         #log starting mailuser creation
-          Write-output "$(Get-TimeStamp) 365 user $($user.MicrosoftOnlineServicesID) doesnt exist proceeding with process to create mail user" | Out-file C:\admin\log\newmailuser1.txt -append  
+          Write-output "$(Get-TimeStamp) 365 user $($user.MicrosoftOnlineServicesID) doesnt exist proceeding with process to create mail user" | Out-file C:\admin\log\newmailuser2.txt -append  
 
            
 
@@ -213,7 +214,7 @@ else{
             if ($user.$column -eq 1) {
 
             #log deleting member of distribution list
-                Write-output "$(Get-TimeStamp) deleting $($user.externalemailaddress1) from distribution list $column" | Out-file C:\admin\log\newmailuser1.txt -append
+                Write-output "$(Get-TimeStamp) deleting $($user.externalemailaddress1) from distribution list $column" | Out-file C:\admin\log\newmailuser2.txt -append
 
                 Remove-DistributionGroupMember -identity $column -member $user.externalemailaddress1 -confirm:$false
                          }
@@ -232,7 +233,7 @@ else{
             if ($user.$column -eq 1) {
 
                         #log deleting member of distribution list
-                Write-output "$(Get-TimeStamp) deleting $($user.externalemailaddress1) from contacts" | Out-file C:\admin\log\newmailuser1.txt -append
+                Write-output "$(Get-TimeStamp) deleting $($user.externalemailaddress1) from contacts" | Out-file C:\admin\log\newmailuser2.txt -append
            
                 remove-mailcontact -identity $($user.externalemailaddress1) -confirm:$false
 
@@ -250,10 +251,10 @@ else{
             if ($user.$column -eq 1) {
             $mailcontact = get-mailcontact -identity $user.externalemailaddress1 -ErrorAction SilentlyContinue 
                 if($mailcontact){
-                Write-output "$(Get-TimeStamp) deletion of $($user.externalemailaddress1) from contacts failed" | Out-file C:\admin\log\newmailuser1.txt -append
+                Write-output "$(Get-TimeStamp) deletion of $($user.externalemailaddress1) from contacts failed" | Out-file C:\admin\log\newmailuser2.txt -append
                 }
                 else{
-                Write-output "$(Get-TimeStamp) deletion of $($user.externalemailaddress1) from contacts was successful" | Out-file C:\admin\log\newmailuser1.txt -append
+                Write-output "$(Get-TimeStamp) deletion of $($user.externalemailaddress1) from contacts was successful" | Out-file C:\admin\log\newmailuser2.txt -append
                                 }
                         }
                 }
@@ -262,7 +263,7 @@ else{
 
 
     #log mailuser creating
-      Write-output "$(Get-TimeStamp) creating mail user for $($user.externalemailaddress1)" | Out-file C:\admin\log\newmailuser1.txt -append
+      Write-output "$(Get-TimeStamp) creating mail user for $($user.externalemailaddress1)" | Out-file C:\admin\log\newmailuser2.txt -append
 
 
     #Randomly Chooses Password
@@ -288,10 +289,10 @@ else{
 
         #log verify mailuser creation
          if($mailuser){
-          Write-output "$(Get-TimeStamp) creation of mail user for $($user.externalemailaddress1) was successful" | Out-file C:\admin\log\newmailuser1.txt -append
+          Write-output "$(Get-TimeStamp) creation of mail user for $($user.externalemailaddress1) was successful" | Out-file C:\admin\log\newmailuser2.txt -append
          }
          else{
-         Write-output "$(Get-TimeStamp) creation of mail user for $($user.externalemailaddress1) failed" | Out-file C:\admin\log\newmailuser1.txt -append
+         Write-output "$(Get-TimeStamp) creation of mail user for $($user.externalemailaddress1) failed" | Out-file C:\admin\log\newmailuser2.txt -append
          }
 
   #add mailuser to distribution list
@@ -303,7 +304,7 @@ else{
         # Check if the value is equal to 1 and therefore add in distribution list
 
         if ($user.$column -eq 1) {
-          Write-output "$(Get-TimeStamp) adding mail user  $($user.externalemailaddress1) to distribution list $column" | Out-file C:\admin\log\newmailuser1.txt -append 
+          Write-output "$(Get-TimeStamp) adding mail user  $($user.externalemailaddress1) to distribution list $column" | Out-file C:\admin\log\newmailuser2.txt -append 
             add-DistributionGroupMember -identity $column -member $user.externalemailaddress1 -confirm:$false
         }
     }
