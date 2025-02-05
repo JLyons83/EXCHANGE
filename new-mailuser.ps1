@@ -19,7 +19,7 @@ $ou6 = ""
 
 
 #get users from groups fixed above
-$users = @(
+$usersinAD = @(
     Get-ADUser -Filter * -SearchBase $ou1
     Get-ADUser -Filter * -SearchBase $ou2
     Get-ADUser -Filter * -SearchBase $ou3
@@ -44,7 +44,7 @@ remove-mailcontact $user.MicrosoftOnlineServicesID -erroraction silentlycontinue
 else{}
 
 
-$userin365 = $users | Where-Object { $_.SamAccountName -eq $user.username } -ErrorAction SilentlyContinue
+$userin365 = $usersinAD | Where-Object { $_.SamAccountName -eq $user.username } -ErrorAction SilentlyContinue
 
 if($userin365){
 
