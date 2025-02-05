@@ -51,21 +51,21 @@ Write-output "$(Get-TimeStamp) user $($user.username) exists in 365 and is synci
 $domain = "@jct.ac.il"
 $domain_offsite = "@jctacil.onmicrosoft.com"
 
-$user = $user.username
+$username = $user.username
 
 #set proxyaddresses variable for attribute
-$proxyaddress1 = "SMTP:$user$domain"
-$proxyaddress2 = "smtp:$user$domain_offsite"
+$proxyaddress1 = "SMTP:$username$domain"
+$proxyaddress2 = "smtp:$username$domain_offsite"
 $Proxyaddresses="$proxyaddress1,$proxyaddress2"
 
 #set mail variable for attribute
-$mail = "$User$domain"
+$mail = "$Username$domain"
 
 Write-output "$(Get-TimeStamp) user $($user.username)  starting process to set-aduser" | Out-file C:\admin\log\newmailuser2.txt -append
 #sets attributes in AD for exchange 365 email
-Set-ADUser -Identity $user -Add @{proxyaddresses=$Proxyaddresses;mailnickname=$user} -Replace @{mail=$mail;UserPrincipalName=$mail}
+Set-ADUser -Identity $username -Add @{proxyaddresses=$Proxyaddresses;mailnickname=$username} -Replace @{mail=$mail;UserPrincipalName=$mail}
 #adds to group for exchange email
-add-adgroupmember -identity "exchange users" -members $user
+add-adgroupmember -identity "exchange users" -members $username
 
 start-sleep -seconds 2
 
@@ -77,7 +77,7 @@ do {
   catch{}
     # Check the result
     if ($sync.Result -eq "Success") {
-        Write-output "$(Get-TimeStamp) AD Sync completed successfully!" | Out-file C:\admin\log\newmailuser2.txt -append
+        Write-output "$(Get-TimeStamp) AD Sync completed successfully! for user $($user.username)" | Out-file C:\admin\log\newmailuser2.txt -append
         break  # Exit the loop
     } else {
         Write-output "$(Get-TimeStamp) Sync not successful, retrying in 10 seconds..." | Out-file C:\admin\log\newmailuser2.txt -append
